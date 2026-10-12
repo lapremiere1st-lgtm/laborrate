@@ -1,0 +1,418 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>임률 산정 — 9BXX 용접조립·프레스</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans+KR:wght@400;500;600;700&display=swap" rel="stylesheet">
+<script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
+<style>
+:root{
+  --paper:#EEF1F3; --sheet:#FFFFFF; --ink:#1C2430; --sub:#5B6775; --line:#CBD3DA;
+  --steel:#2F5D7C; --steel-soft:#DCE6EE; --mark:#E8B400; --warn:#A6461F; --press:#7A4E9E;
+  box-sizing:border-box; padding-top:env(safe-area-inset-top,0px); padding-bottom:env(safe-area-inset-bottom,0px);
+}
+@media (prefers-color-scheme:dark){ :root:not([data-theme="light"]){
+  --paper:#151A20; --sheet:#1D242C; --ink:#E6EBF0; --sub:#9AA7B4; --line:#34404C;
+  --steel:#7FB0D3; --steel-soft:#24323F; --mark:#F2C230; --warn:#E08A62; --press:#B993DA; } }
+:root[data-theme="dark"]{ --paper:#151A20; --sheet:#1D242C; --ink:#E6EBF0; --sub:#9AA7B4; --line:#34404C;
+  --steel:#7FB0D3; --steel-soft:#24323F; --mark:#F2C230; --warn:#E08A62; --press:#B993DA; }
+*,*::before,*::after{box-sizing:inherit}
+html{scroll-padding-top:env(safe-area-inset-top,0px)}
+body{margin:0;background:var(--paper);color:var(--ink);font:15px/1.6 "IBM Plex Sans KR","Apple SD Gothic Neo","Malgun Gothic",sans-serif;font-variant-numeric:tabular-nums}
+.wrap{max-width:1240px;margin:0 auto;padding:28px 20px 60px;display:grid;grid-template-columns:320px 1fr;gap:28px}
+@media (max-width:900px){.wrap{grid-template-columns:1fr}}
+h1{font-size:22px;font-weight:700;margin:0 0 2px;letter-spacing:-.01em}
+.lede{color:var(--sub);margin:0 0 20px;font-size:14px}
+aside section{border-top:2px solid var(--ink);padding:14px 0 20px}
+aside h2{font-size:14px;font-weight:600;margin:0 0 10px}
+.drop{display:block;border:1.5px dashed var(--steel);background:var(--steel-soft);border-radius:6px;padding:18px 14px;text-align:center;cursor:pointer}
+.drop.on{background:var(--sheet)}
+.drop b{display:block;color:var(--steel)}
+.drop small{color:var(--sub)}
+input[type=file]{display:none}
+.months{display:grid;grid-template-columns:repeat(4,1fr);gap:6px}
+.mchip{display:flex;align-items:center;justify-content:center;gap:4px;border:1px solid var(--line);border-radius:4px;padding:5px 0;font-size:13px;cursor:pointer;background:var(--sheet);user-select:none}
+.mchip input{accent-color:var(--steel);margin:0}
+.mchip.off{opacity:.45}
+.row{display:flex;gap:8px;align-items:center;margin:6px 0}
+.row label{flex:1;font-size:13px;color:var(--sub)}
+.row input{width:96px;text-align:right}
+input[type=text],input[type=number]{font:inherit;font-size:14px;padding:5px 8px;border:1px solid var(--line);border-radius:4px;background:var(--sheet);color:var(--ink)}
+textarea{width:100%;font:inherit;font-size:13px;padding:6px 8px;border:1px solid var(--line);border-radius:4px;background:var(--sheet);color:var(--ink);resize:vertical}
+button{font:inherit;font-size:13px;padding:6px 12px;border:1px solid var(--steel);background:var(--sheet);color:var(--steel);border-radius:4px;cursor:pointer}
+button.primary{background:var(--steel);color:var(--sheet)}
+button:focus-visible,input:focus-visible,textarea:focus-visible,.drop:focus-visible{outline:2px solid var(--mark);outline-offset:2px}
+.note{font-size:12px;color:var(--sub);margin:6px 0 0}
+.btns{display:flex;gap:6px;flex-wrap:wrap;margin-top:10px}
+
+/* 임률 게이지: 이 화면의 주인공 */
+.gauge{display:grid;grid-template-columns:repeat(3,1fr);border:2px solid var(--ink);background:var(--sheet)}
+.gauge>div{padding:18px 20px 16px;border-right:1px solid var(--line);position:relative}
+.gauge>div:last-child{border-right:0;background:repeating-linear-gradient(-45deg,transparent 0 10px,color-mix(in srgb,var(--mark) 14%,transparent) 10px 20px)}
+.gauge .k{font-size:13px;color:var(--sub)}
+.gauge .v{font-size:40px;font-weight:700;line-height:1.15;letter-spacing:-.02em;margin-top:4px}
+.gauge .v small{font-size:15px;font-weight:500;color:var(--sub);margin-left:4px}
+.gauge .d{font-size:12px;color:var(--sub);margin-top:4px}
+.gauge .v.flash{animation:fl .6s}
+@keyframes fl{from{color:var(--mark)}}
+@media (prefers-reduced-motion:reduce){.gauge .v.flash{animation:none}}
+@media (max-width:640px){.gauge{grid-template-columns:1fr}.gauge>div{border-right:0;border-bottom:1px solid var(--line)}.gauge .v{font-size:32px}}
+.period{display:flex;justify-content:space-between;gap:10px;flex-wrap:wrap;margin:0 0 10px;font-size:13px;color:var(--sub)}
+.period strong{color:var(--ink)}
+
+main h3{font-size:15px;font-weight:600;margin:30px 0 10px}
+.tbl{overflow-x:auto;background:var(--sheet);border:1px solid var(--line)}
+table{border-collapse:collapse;width:100%;min-width:620px;font-size:13.5px}
+th,td{padding:6px 12px;border-bottom:1px solid var(--line);text-align:right;white-space:nowrap}
+th:first-child,th:nth-child(2),td.cat,td.lab{text-align:left}
+thead th{background:var(--steel-soft);font-weight:600}
+td.cat{color:var(--sub);font-size:12.5px;width:74px;vertical-align:top}
+tr.sub td{font-weight:600;background:color-mix(in srgb,var(--steel-soft) 55%,var(--sheet))}
+tr.total td{font-weight:700;border-top:2px solid var(--ink)}
+tr.rate td{font-weight:700;font-size:15px;background:color-mix(in srgb,var(--mark) 22%,var(--sheet));border-bottom:2px solid var(--ink)}
+.chart{background:var(--sheet);border:1px solid var(--line);padding:12px}
+.legend{display:flex;gap:16px;font-size:13px;margin:0 0 6px}
+.legend i{display:inline-block;width:14px;height:3px;vertical-align:middle;margin-right:6px}
+.warn{border-left:3px solid var(--warn);background:var(--sheet);padding:10px 14px;font-size:13px;margin:14px 0 0}
+.warn:empty{display:none}
+.empty{border:2px solid var(--ink);background:var(--sheet);padding:36px 28px}
+.empty h2{margin:0 0 8px;font-size:20px}
+.empty ol{margin:10px 0 0;padding-left:20px;color:var(--sub)}
+.files{font-size:12.5px;color:var(--sub);margin:8px 0 0;padding:0;list-style:none}
+.hidden{display:none}
+</style>
+</head>
+<body>
+<div class="wrap">
+<aside>
+  <h1>임률 산정</h1>
+  <p class="lede">정규직 직접직 · 9B 용접조립 / 프레스</p>
+
+  <section>
+    <h2>급여자료 올리기</h2>
+    <label class="drop" id="drop" tabindex="0">
+      <b>엑셀 파일을 끌어다 놓거나 눌러서 선택</b>
+      <small>ERP 급여 내려받기(.xlsx) · 여러 달 한꺼번에 가능</small>
+      <input type="file" id="file" accept=".xlsx,.xls" multiple>
+    </label>
+    <p class="note">같은 달을 다시 올리면 그 달 자료만 새것으로 바뀝니다. 파일은 이 브라우저 안에서만 읽히고 어디로도 전송되지 않습니다.</p>
+    <ul class="files" id="files"></ul>
+  </section>
+
+  <section>
+    <h2>산정 기간</h2>
+    <div class="months" id="months"><span class="note">자료를 올리면 월이 표시됩니다.</span></div>
+    <div class="btns"><button id="allM">전체 선택</button><button id="clearData">저장된 자료 지우기</button></div>
+  </section>
+
+  <section>
+    <h2>부서코드</h2>
+    <div class="row"><label for="gW">용접조립</label></div>
+    <textarea id="gW" rows="1">7310, 7320, 7330, 7370</textarea>
+    <div class="row"><label for="gP">프레스</label></div>
+    <textarea id="gP" rows="1">7120, 7140, 7210, 7220, 7250, 7270</textarea>
+    <p class="note" id="deptNames"></p>
+  </section>
+
+  <section>
+    <h2>사업주 부담 요율</h2>
+    <div class="row"><label for="rEmp">고용보험 (%)</label><input type="number" step="0.001" id="rEmp" value="1.25"></div>
+    <div class="row"><label for="rHealth">건강보험 (%)</label><input type="number" step="0.001" id="rHealth" value="3.545"></div>
+    <div class="row"><label for="rLtc">장기요양 (건보료 대비 %)</label><input type="number" step="0.01" id="rLtc" value="12.95"></div>
+    <div class="row"><label for="rAcc">산재보험 (%)</label><input type="number" step="0.001" id="rAcc" value="1.414"></div>
+    <div class="row"><label for="rPen">국민연금 (%)</label><input type="number" step="0.001" id="rPen" value="4.387"></div>
+    <p class="note">기본값은 원본 엑셀(연간통합 I26:M26)과 같습니다. 2026년 고시 요율은 건강 3.595%, 장기요양 13.14%, 국민연금 4.75%입니다.</p>
+    <div class="btns"><button id="law2026">2026 고시요율 적용</button><button id="origRates">원본 요율로 되돌리기</button></div>
+  </section>
+</aside>
+
+<main>
+  <div id="emptyState" class="empty">
+    <h2>매월 급여자료를 올리면 임률이 바로 계산됩니다</h2>
+    <p class="note" style="font-size:14px">원본 「연간임률산정」 파일의 연간통합 시트 수식을 그대로 옮겼습니다.</p>
+    <ol>
+      <li>ERP에서 급여대장을 엑셀로 내려받습니다 (원본의 「생산전체」 시트 형식).</li>
+      <li>왼쪽 칸에 끌어다 놓습니다. 기존 연간임률산정 파일을 통째로 올려도 됩니다.</li>
+      <li>산정 기간·요율을 바꾸면 임률이 즉시 다시 계산됩니다.</li>
+    </ol>
+  </div>
+
+  <div id="result" class="hidden">
+    <div class="period"><span id="periodText"></span><span><button id="exportX" class="primary">결과를 엑셀로 저장</button></span></div>
+    <div class="gauge">
+      <div><div class="k">용접조립 임률</div><div class="v" id="vW">-</div><div class="d" id="dW"></div></div>
+      <div><div class="k">프레스 임률</div><div class="v" id="vP">-</div><div class="d" id="dP"></div></div>
+      <div><div class="k">통합 임률</div><div class="v" id="vF">-</div><div class="d" id="dF"></div></div>
+    </div>
+    <div class="warn" id="warn"></div>
+
+    <h3>월별 임률 추이 (해당 월 단독 산정)</h3>
+    <div class="chart">
+      <div class="legend"><span><i style="background:var(--steel)"></i>용접조립</span><span><i style="background:var(--press)"></i>프레스</span><span><i style="background:var(--mark)"></i>통합</span></div>
+      <div id="chart"></div>
+    </div>
+
+    <h3>산정 내역 (1인당 월평균, 원)</h3>
+    <div class="tbl"><table id="tbl"></table></div>
+
+    <h3>월별 임률표</h3>
+    <div class="tbl"><table id="mtbl"></table></div>
+  </div>
+</main>
+</div>
+<script>
+// ===== 임률 계산 핵심 로직 (연간통합 시트 수식과 동일) =====
+const FIELD_NAMES = {
+  R:'제', O:'본', N:'법정통상', J:'근속기준일', Y:'기본급', AG:'(합계)', AH:'직책수당',
+  AI:'고연수당', AJ:'추연수당', AK:'실연수당', AM:'휴일근로', AN:'휴일연장', AO:'야근수당',
+  AQ:'복지수당', AS:'학자금', AT:'조정수당', AY:'공상급여', AZ:'과세1', BA:'과세2', BB:'과세3',
+  BD:'가족수당', BG:'법정선임', DE:'연장(계)', DF:'휴근', DG:'휴연'
+};
+const SUM_KEYS = Object.keys(FIELD_NAMES).filter(k => k !== 'J');
+const norm = s => String(s == null ? '' : s).normalize('NFKC').replace(/\s+/g, '');
+
+function leaveDays(y) { // 연간통합 EP열 IF식과 동일 (8년 미만은 원본처럼 0)
+  const t = [[21,25],[19,24],[17,23],[15,22],[13,21],[11,20],[10,19],[8,18]];
+  for (const [a,d] of t) if (y >= a) return d;
+  return 0;
+}
+const isDate = v => v instanceof Date && !isNaN(v);
+const ymKey = d => d.getFullYear() + '-' + String(d.getMonth()+1).padStart(2,'0');
+const daysInMonth = ym => { const [y,m] = ym.split('-').map(Number); return new Date(y, m, 0).getDate(); };
+const num = v => (typeof v === 'number' && isFinite(v)) ? v : (typeof v === 'string' && v.trim() !== '' && isFinite(+v.replace(/,/g,'')) ? +v.replace(/,/g,'') : 0);
+
+// 시트(2차원 배열)에서 급여 행을 읽어 월×부서코드별 합계로 집계 (개인정보는 남기지 않음)
+function aggregateRows(rows) {
+  let hdr = -1, idx = {};
+  for (let i = 0; i < Math.min(rows.length, 40); i++) {
+    const r = (rows[i] || []).map(norm);
+    if (r.includes('기본급') && r.includes('고연수당') && r.includes('부서')) { hdr = i; break; }
+  }
+  if (hdr < 0) return null;
+  const h = rows[hdr].map(norm);
+  const missing = [];
+  for (const [k, name] of Object.entries(FIELD_NAMES)) {
+    const c = h.indexOf(norm(name)); if (c < 0) missing.push(name); idx[k] = c;
+  }
+  const cDept = h.indexOf('부서'), cYm = cDept - 1, cName = h.indexOf('부서명');
+  const out = {}; let count = 0;
+  for (let i = hdr + 1; i < rows.length; i++) {
+    const r = rows[i]; if (!r) continue;
+    const d = r[cYm]; const dept = num(r[cDept]);
+    if (!isDate(d) || !dept) continue;
+    const ym = ymKey(d);
+    const m = out[ym] || (out[ym] = {});
+    const g = m[dept] || (m[dept] = { name: cName >= 0 ? (r[cName] || '') : '', cnt: 0, EN: 0, EQ: 0, short: 0, s: {} });
+    g.cnt++; count++;
+    for (const k of SUM_KEYS) g.s[k] = (g.s[k] || 0) + (idx[k] >= 0 ? num(r[idx[k]]) : 0);
+    const N = idx.N >= 0 ? num(r[idx.N]) : 0;
+    g.EN += N * 30 * 0.8 / 12;                              // 귀성비 (EN열)
+    const J = idx.J >= 0 ? r[idx.J] : null;                 // 근속기준일
+    if (isDate(J)) {
+      const base = Date.UTC(d.getFullYear(), 0, 1);         // 기준일: 해당연도 1/1 (원본 EO5)
+      const y = (base - Date.UTC(J.getFullYear(), J.getMonth(), J.getDate())) / 864e5 / 365;
+      const ld = leaveDays(y); if (!ld) g.short++;
+      g.EQ += ld * N;                                       // 연차수당 (EQ열)
+    }
+  }
+  return { months: out, rows: count, missing };
+}
+
+// 선택한 월·부서 묶음에 대해 연간통합 표를 계산
+function computeGroup(data, months, codes, rates) {
+  const sel = months.filter(ym => data[ym] && codes.some(c => data[ym][c]));
+  const n = sel.length;
+  if (!n) return null;
+  const D = sel.reduce((a, ym) => a + daysInMonth(ym), 0);
+  const S = {}; let EN = 0, EQ = 0, short = 0, cnt = 0;
+  for (const ym of sel) for (const c of codes) {
+    const g = data[ym][c]; if (!g) continue;
+    cnt += g.cnt; EN += g.EN; EQ += g.EQ; short += g.short;
+    for (const k of SUM_KEYS) S[k] = (S[k] || 0) + (g.s[k] || 0);
+  }
+  const heads = S.R / D;                       // 인원 = Σ일수 / 기간 총일수
+  if (!heads) return null;
+  const m = k => (S[k] || 0) / heads / n;      // 1인당 월평균
+  const items = [
+    ['기본급', m('Y')], ['통상수당', m('AG')], ['고정OT', m('AI')],
+    ['연장(+휴근+휴연)수당', m('AJ') + m('AK') + m('AM') + m('AN')],
+    ['야간수당', m('AO')], ['복지수당', m('AQ')], ['직책수당', m('AH')], ['조정수당', m('AT')],
+    ['가족수당', m('BD')], ['법정선임수당', m('BG')], ['귀성비', EN / heads / n],
+    ['연차수당', EQ / heads / n / 12], ['기타수당(과세1.2.3+공상급여)', m('AZ') + m('BA') + m('BB') + m('AY')]
+  ];
+  const direct = items.reduce((a, x) => a + x[1], 0);
+  const ins = rates.emp + rates.health + rates.health * rates.ltc + rates.acc + rates.pension;
+  const indirectItems = [['학자금', m('AS')], ['4대보험', direct * ins], ['퇴직급여충당금', direct / 12]];
+  const indirect = indirectItems.reduce((a, x) => a + x[1], 0);
+  const hoursItems = [['기본시간', (S.O || 0) / n / heads * 8], ['연장시간', m('DE')], ['휴일시간', m('DF')], ['휴일연장시간', m('DG')]];
+  const hours = hoursItems.reduce((a, x) => a + x[1], 0);
+  const total = direct + indirect;
+  return { n, months: sel, heads, items, direct, indirectItems, indirect, total, hoursItems, hours, rate: hours ? total / hours : 0, short, cnt };
+}
+
+
+const $ = id => document.getElementById(id);
+const KEY = 'imryul-9bxx-v1';
+let store = { months: {}, files: [] };   // 월×부서 집계값만 보관 (사번·성명 없음)
+let selected = null;
+const ORIG = { rEmp:1.25, rHealth:3.545, rLtc:12.95, rAcc:1.414, rPen:4.387 };
+const LAW  = { rEmp:1.25, rHealth:3.595, rLtc:13.14, rAcc:1.414, rPen:4.75 };
+
+function load(){ try{ const s = localStorage.getItem(KEY); if(s){ const o = JSON.parse(s); store = o.store || store; selected = o.selected || null;
+  for(const id of ['gW','gP',...Object.keys(ORIG)]) if(o.inputs && o.inputs[id]!=null) $(id).value = o.inputs[id]; } }catch(e){} }
+function save(){ try{ const inputs = {}; for(const id of ['gW','gP',...Object.keys(ORIG)]) inputs[id] = $(id).value;
+  localStorage.setItem(KEY, JSON.stringify({store, selected, inputs})); }catch(e){} }
+
+const fmt = (v, d=0) => (v==null||!isFinite(v)) ? '-' : v.toLocaleString('ko-KR',{minimumFractionDigits:d,maximumFractionDigits:d});
+const codes = id => $(id).value.split(/[^0-9]+/).filter(Boolean).map(Number);
+const rates = () => ({ emp:+$('rEmp').value/100, health:+$('rHealth').value/100, ltc:+$('rLtc').value/100, acc:+$('rAcc').value/100, pension:+$('rPen').value/100 });
+const ymLabel = ym => { const [y,m] = ym.split('-'); return `${y.slice(2)}.${+m}월`; };
+
+async function handleFiles(list){
+  for (const f of list){
+    try{
+      const buf = await f.arrayBuffer();
+      const wb = XLSX.read(buf, { type:'array', cellDates:true });
+      const order = wb.SheetNames.slice().sort((a,b)=> (b==='생산전체') - (a==='생산전체'));
+      let res = null;
+      for (const n of order){ res = aggregateRows(XLSX.utils.sheet_to_json(wb.Sheets[n], {header:1, raw:true, defval:null})); if (res && res.rows) break; }
+      if (!res || !res.rows){ note(f.name, '급여 항목 머리글(부서·기본급·고연수당)을 찾지 못했습니다'); continue; }
+      const yms = Object.keys(res.months).sort();
+      for (const ym of yms) store.months[ym] = res.months[ym];
+      if (selected) for (const ym of yms) if (!selected.includes(ym)) selected.push(ym);
+      note(f.name, `${yms.map(ymLabel).join(', ')} · ${res.rows.toLocaleString()}행` + (res.missing.length ? ` · 없는 항목: ${res.missing.join(', ')}` : ''));
+    }catch(e){ note(f.name, '읽기 실패: ' + e.message); }
+  }
+  save(); render();
+}
+function note(name, msg){ store.files.unshift({ name, msg, at: new Date().toLocaleString('ko-KR') }); store.files = store.files.slice(0, 12); }
+
+function renderMonths(all){
+  const box = $('months');
+  if (!all.length){ box.innerHTML = '<span class="note">자료를 올리면 월이 표시됩니다.</span>'; return; }
+  box.innerHTML = all.map(ym => `<label class="mchip ${selected.includes(ym)?'':'off'}"><input type="checkbox" data-ym="${ym}" ${selected.includes(ym)?'checked':''}>${ymLabel(ym)}</label>`).join('');
+  box.querySelectorAll('input').forEach(cb => cb.onchange = () => {
+    const ym = cb.dataset.ym; selected = cb.checked ? [...selected, ym] : selected.filter(x => x !== ym); save(); render(); });
+}
+
+let prev = {};
+function setV(id, v){ const el = $(id); const t = v ? fmt(v) : '-'; el.innerHTML = t + (v ? '<small>원/H</small>' : '');
+  if (prev[id] !== undefined && prev[id] !== t){ el.classList.remove('flash'); void el.offsetWidth; el.classList.add('flash'); } prev[id] = t; }
+
+function render(){
+  const all = Object.keys(store.months).sort();
+  if (!selected) selected = all.slice();
+  selected = selected.filter(ym => all.includes(ym)).sort();
+  renderMonths(all);
+  $('files').innerHTML = store.files.map(f => `<li>${f.name} — ${f.msg}</li>`).join('');
+  $('emptyState').classList.toggle('hidden', all.length > 0);
+  $('result').classList.toggle('hidden', !all.length);
+  if (!all.length) return;
+
+  // 부서명 안내
+  const names = {}; for (const ym of all) for (const [c,g] of Object.entries(store.months[ym])) if (g.name) names[c] = g.name;
+  const cw = codes('gW'), cp = codes('gP');
+  const unk = [...cw, ...cp].filter(c => !all.some(ym => store.months[ym][c]));
+  $('deptNames').textContent = unk.length ? `자료에 없는 부서코드: ${unk.join(', ')}` : '';
+
+  const r = rates();
+  const W = computeGroup(store.months, selected, cw, r), P = computeGroup(store.months, selected, cp, r);
+  const F = (W && P) ? (W.total + P.total) / (W.hours + P.hours) : (W||P||{}).rate;
+  setV('vW', W && W.rate); setV('vP', P && P.rate); setV('vF', F);
+  $('dW').textContent = W ? `평균 ${fmt(W.heads,1)}명 · 월 ${fmt(W.hours,1)}시간` : '자료 없음';
+  $('dP').textContent = P ? `평균 ${fmt(P.heads,1)}명 · 월 ${fmt(P.hours,1)}시간` : '자료 없음';
+  $('dF').textContent = (W && P) ? `인건비 합계 ÷ 투입시간 합계` : '';
+  $('periodText').innerHTML = selected.length ? `산정기간 <strong>${ymLabel(selected[0])} ~ ${ymLabel(selected[selected.length-1])}</strong> (${selected.length}개월)` : '산정 기간을 하나 이상 선택하세요';
+
+  const warns = [];
+  const sh = (W?W.short:0) + (P?P.short:0);
+  if (sh) warns.push(`근속 8년 미만 ${sh}건은 원본 수식(EP열)처럼 연차일수가 0으로 계산되었습니다. 해당 인원이 있다면 연차 기준표를 보완해야 합니다.`);
+  const gap = all.filter((ym,i) => i && !selected.includes(ym) && selected.some(s => s > ym) && selected.some(s => s < ym));
+  if (gap.length) warns.push(`선택 기간 중간에 빠진 달이 있습니다: ${gap.map(ymLabel).join(', ')}`);
+  $('warn').innerHTML = warns.join('<br>');
+
+  renderTable(W, P); renderMonthly(all, cw, cp, r); save();
+  window.__last = { W, P, F };
+}
+
+function renderTable(W, P){
+  const v = (g, i, k) => g ? g[k][i][1] : null;
+  const both = (a,b) => (a==null&&b==null) ? null : (a||0)+(b||0);
+  let h = `<thead><tr><th>구분</th><th>항목</th><th>용접조립</th><th>프레스</th><th>소계</th></tr></thead><tbody>`;
+  h += row('', '인원 (명)', W&&W.heads, P&&P.heads, both(W&&W.heads,P&&P.heads), 1);
+  const base = (W||P);
+  base.items.forEach((it,i) => h += row(i?null:'직접<br>인건비', it[0], v(W,i,'items'), v(P,i,'items'), both(v(W,i,'items'),v(P,i,'items')), 0, i?'':`rowspan="${base.items.length+1}"`));
+  h += row(null, '소 계', W&&W.direct, P&&P.direct, both(W&&W.direct,P&&P.direct), 0, '', 'sub');
+  base.indirectItems.forEach((it,i) => h += row(i?null:'간접<br>인건비', it[0], v(W,i,'indirectItems'), v(P,i,'indirectItems'), both(v(W,i,'indirectItems'),v(P,i,'indirectItems')), 0, i?'':`rowspan="${base.indirectItems.length+1}"`));
+  h += row(null, '소 계', W&&W.indirect, P&&P.indirect, both(W&&W.indirect,P&&P.indirect), 0, '', 'sub');
+  h += row('', '인건비 총합계', W&&W.total, P&&P.total, both(W&&W.total,P&&P.total), 0, '', 'total');
+  base.hoursItems.forEach((it,i) => h += row(i?null:'투입<br>시간', it[0]+' (H)', v(W,i,'hoursItems'), v(P,i,'hoursItems'), both(v(W,i,'hoursItems'),v(P,i,'hoursItems')), 2, i?'':`rowspan="${base.hoursItems.length+1}"`));
+  h += row(null, '총 투입시간 (H)', W&&W.hours, P&&P.hours, both(W&&W.hours,P&&P.hours), 2, '', 'sub');
+  const F = window.__lastF = (W&&P) ? (W.total+P.total)/(W.hours+P.hours) : (W||P).rate;
+  h += row('', '임 률 (원/H)', W&&W.rate, P&&P.rate, F, 0, '', 'rate');
+  $('tbl').innerHTML = h + '</tbody>';
+}
+function row(cat, label, a, b, c, d, span='', cls=''){
+  const first = cat === null ? '' : `<td class="cat" ${span}>${cat}</td>`;
+  return `<tr class="${cls}">${first}<td class="lab">${label}</td><td>${fmt(a,d)}</td><td>${fmt(b,d)}</td><td>${fmt(c,d)}</td></tr>`;
+}
+
+function renderMonthly(all, cw, cp, r){
+  const data = all.map(ym => { const W = computeGroup(store.months,[ym],cw,r), P = computeGroup(store.months,[ym],cp,r);
+    return { ym, W: W&&W.rate, P: P&&P.rate, F: (W&&P)?(W.total+P.total)/(W.hours+P.hours):null, hW: W&&W.heads, hP: P&&P.heads, on: selected.includes(ym) }; });
+  window.__monthly = data;
+  $('mtbl').innerHTML = `<thead><tr><th>월</th><th>용접조립 인원</th><th>용접조립 임률</th><th>프레스 인원</th><th>프레스 임률</th><th>통합 임률</th></tr></thead><tbody>` +
+    data.map(d => `<tr style="${d.on?'':'opacity:.45'}"><td>${ymLabel(d.ym)}</td><td>${fmt(d.hW,1)}</td><td>${fmt(d.W)}</td><td>${fmt(d.hP,1)}</td><td>${fmt(d.P)}</td><td>${fmt(d.F)}</td></tr>`).join('') + '</tbody>';
+  // SVG 선그래프
+  const vals = data.flatMap(d => [d.W,d.P,d.F]).filter(x => x);
+  if (!vals.length){ $('chart').innerHTML=''; return; }
+  let lo = Math.min(...vals), hi = Math.max(...vals); const pad = (hi-lo)*.15 || hi*.05; lo -= pad; hi += pad;
+  const Wd = 760, H = 240, L = 64, R = 30, T = 12, B = 30, n = data.length;
+  const x = i => L + (n===1 ? (Wd-L-R)/2 : i*(Wd-L-R)/(n-1)), y = v => T + (hi-v)/(hi-lo)*(H-T-B);
+  let s = `<svg viewBox="0 0 ${Wd} ${H}" width="100%" role="img" aria-label="월별 임률 추이" style="display:block;max-width:100%" font-size="12" font-family="inherit">`;
+  for (let k=0;k<=4;k++){ const v = lo + (hi-lo)*k/4; s += `<line x1="${L}" x2="${Wd-R}" y1="${y(v)}" y2="${y(v)}" stroke="var(--line)"/><text x="${L-8}" y="${y(v)+4}" text-anchor="end" fill="var(--sub)">${fmt(v)}</text>`; }
+  data.forEach((d,i) => s += `<text x="${x(i)}" y="${H-8}" text-anchor="middle" fill="var(--sub)">${ymLabel(d.ym)}</text>`);
+  for (const [k,col] of [['W','var(--steel)'],['P','var(--press)'],['F','var(--mark)']]){
+    const pts = data.map((d,i) => d[k] ? `${x(i)},${y(d[k])}` : null).filter(Boolean);
+    if (pts.length > 1) s += `<polyline points="${pts.join(' ')}" fill="none" stroke="${col}" stroke-width="${k==='F'?3:2}"/>`;
+    data.forEach((d,i) => { if (d[k]) s += `<circle cx="${x(i)}" cy="${y(d[k])}" r="3.5" fill="${col}"><title>${ymLabel(d.ym)} ${fmt(d[k])}원/H</title></circle>`; });
+  }
+  $('chart').innerHTML = s + '</svg>';
+}
+
+function exportXlsx(){
+  const t = $('tbl'), m = $('mtbl');
+  const wb = XLSX.utils.book_new();
+  const ws1 = XLSX.utils.table_to_sheet(t, { raw:false });
+  ws1['!cols'] = [{wch:10},{wch:28},{wch:14},{wch:14},{wch:14}];
+  XLSX.utils.book_append_sheet(wb, ws1, '임률산정');
+  const ws2 = XLSX.utils.table_to_sheet(m, { raw:false });
+  XLSX.utils.book_append_sheet(wb, ws2, '월별임률');
+  const r = rates();
+  const ws3 = XLSX.utils.aoa_to_sheet([['산정기간', selected.map(ymLabel).join(', ')],['부서코드-용접조립',$('gW').value],['부서코드-프레스',$('gP').value],
+    ['고용보험',r.emp],['건강보험',r.health],['장기요양(건보 대비)',r.ltc],['산재보험',r.acc],['국민연금',r.pension],['작성',new Date().toLocaleString('ko-KR')]]);
+  XLSX.utils.book_append_sheet(wb, ws3, '산정조건');
+  const last = selected[selected.length-1] || '';
+  XLSX.writeFile(wb, `임률산정_${last.replace('-','')}.xlsx`);
+}
+
+// 이벤트
+const drop = $('drop');
+drop.addEventListener('keydown', e => { if (e.key==='Enter'||e.key===' '){ e.preventDefault(); $('file').click(); } });
+['dragenter','dragover'].forEach(t => drop.addEventListener(t, e => { e.preventDefault(); drop.classList.add('on'); }));
+['dragleave','drop'].forEach(t => drop.addEventListener(t, e => { e.preventDefault(); drop.classList.remove('on'); }));
+drop.addEventListener('drop', e => handleFiles([...e.dataTransfer.files]));
+$('file').onchange = e => { const fs = [...e.target.files]; e.target.value=''; handleFiles(fs); };
+['gW','gP',...Object.keys(ORIG)].forEach(id => $(id).addEventListener('input', render));
+$('allM').onclick = () => { selected = Object.keys(store.months).sort(); render(); };
+$('clearData').onclick = () => { if (confirm('이 브라우저에 저장된 월별 집계 자료를 모두 지울까요?')){ store = {months:{}, files:[]}; selected = null; prev = {}; save(); render(); } };
+$('law2026').onclick = () => { for (const [k,v] of Object.entries(LAW)) $(k).value = v; render(); };
+$('origRates').onclick = () => { for (const [k,v] of Object.entries(ORIG)) $(k).value = v; render(); };
+$('exportX').onclick = exportXlsx;
+load(); render();
+
+</script>
+</body>
+</html>
